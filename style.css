@@ -1,0 +1,218 @@
+* {
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%; 
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.wrapper {
+  height: 100%;
+  overflow: hidden;
+  
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+#game-field {
+  position: relative;
+  /* border: 2px solid black; */
+}
+
+#canvas {
+  /* width: 100%; */
+  /* height: 100%; */
+}
+
+@media (max-width: 500px)  {
+  #game-field {
+    border: none;
+  }
+}
+
+.score {
+  margin-top: 20px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.score span {
+  font-family:Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif;
+  font-size: 24px;
+}
+
+.preview {
+  width: 80px;
+  height: 120px;
+  position: absolute;
+  z-index: 10;
+  right: 100%;
+  top: 0;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  border: 1px solid black;
+  background-color: #fff;
+}
+
+.preview .preview__subtitle {
+  position: absolute;
+  bottom: 10px;
+}
+
+.preview .preview__figure {
+  display: block;
+  position: relative;
+  margin-bottom: 20px;
+  background-color: black;
+}
+
+/* Cube */
+.preview.Cube .preview__figure {
+  width: 40px;
+  height: 40px;
+}
+
+/* Triangle */
+.preview.Triangle .preview__figure {
+  width: 40px;
+  height: 40px;
+}
+
+.preview.Triangle .preview__figure::before {
+  content: '';
+  display: block;
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 50%;
+  width: 50%;
+  background: #fff;
+}
+
+/* Plank */
+.preview.Plank .preview__figure {
+  width: 70px;
+  height: 15px;
+}
+
+/* Stairs */
+.preview.Stairs .preview__figure {
+  margin-bottom: 0;
+  width: 70px;
+  height: 20px;
+}
+
+.preview.Stairs .preview__figure::before {
+  content: '';
+  display: block;
+  position: absolute;
+  top: -100%;
+  left: 50%;
+  transform: translateX(-50%);
+
+  height: 20px;
+  width: 20px;
+  background: black;
+}
+
+/* LCorner */
+.preview.LCorner .preview__figure {
+  margin-bottom: 0;
+  width: 60px;
+  height: 15px;
+}
+
+.preview.LCorner .preview__figure::before {
+  content: '';
+  display: block;
+  position: absolute;
+  top: -100%;
+  left: 0;
+
+  height: 15px;
+  width: 15px;
+  background: black;
+}
+
+/* RCorner */
+.preview.RCorner .preview__figure {
+  margin-bottom: 0;
+  width: 60px;
+  height: 15px;
+}
+
+.preview.RCorner .preview__figure::before {
+  content: '';
+  display: block;
+  position: absolute;
+  top: -100%;
+  right: 0;
+
+  height: 15px;
+  width: 15px;
+  background: black;
+}
+
+/* LSnake */
+.preview.LSnake .preview__figure,
+.preview.RSnake .preview__figure {
+  margin-bottom: 0;
+  width: 50px;
+  height: 30px;
+}
+
+.preview.LSnake .preview__figure::before {
+  content: '';
+  display: block;
+  position: absolute;
+  top: 0;
+  right: 0;
+
+  height: 50%;
+  width: 35%;
+  background: white;
+}
+
+.preview.LSnake .preview__figure::after {
+  content: '';
+  display: block;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+
+  height: 50%;
+  width: 35%;
+  background: white;
+}
+
+/* RSnake */
+.preview.RSnake .preview__figure::before {
+  content: '';
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+
+  height: 50%;
+  width: 35%;
+  background: white;
+}
+
+.preview.RSnake .preview__figure::after {
+  content: '';
+  display: block;
+  position: absolute;
+  bottom: 0;
+  right: 0;
+
+  height: 50%;
+  width: 35%;
+  background: white;
+}
