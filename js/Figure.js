@@ -1,7 +1,7 @@
 import Ceil from "./Ceil.js"
 
 export default class Figure {
-  constructor(Context, figures, grid) {
+  constructor(Context, color="black") {
     this.Context = Context
     this.ctx = Context.ctx
     this.ceilWidth = Context.ceilWidth
@@ -9,14 +9,13 @@ export default class Figure {
       x: 0,
       y: 0,
     }
+    this.color = color
     this.stepCount = 0
     this.lifeTime = 2
-    this.figures = figures
-    figures.push(this)
 
     this.isPlaced = false
     this.tiles = []
-    this.grid = grid
+    this.grid = Context.grid
 
     this.onPlace = null
     this.Angle = 0
@@ -25,6 +24,8 @@ export default class Figure {
       isMovingLeft: false,
       isMovingRight: false,
       isMovingDown: false,
+      isFreeze: false,
+      isRotating: false,
     }
   }
 
@@ -36,14 +37,14 @@ export default class Figure {
     this.drawPreview()
   }
 
-  drawPreview() {
-    this.ctx.globalAlpha = 0.4
+  drawPreview(getTilesPreview=false) {
+    if (!getTilesPreview) this.ctx.globalAlpha = 0.4
     const tiles_preview = this.tiles.map(
-      (tile) => new Ceil(this.Context, { x: tile.position.x, y: tile.position.y })
+      (tile) => new Ceil(this.Context, { x: tile.position.x, y: tile.position.y}, this.color)
     )
     let fuse = 0
     while (!this.checkCollision(undefined, tiles_preview)) {
-      if (fuse >= 30) return
+      if (fuse >= 30) return false
       fuse += 1
       tiles_preview.forEach(tile => {
         tile.position.y += 1
@@ -53,13 +54,14 @@ export default class Figure {
     tiles_preview.forEach(tile => {
       tile.position.y -= 1
       tile.updateWorldPos(this.position)
-      tile.render(true)
+      if (!getTilesPreview) tile.render()
     })
-    this.ctx.globalAlpha = 1
+    if (!getTilesPreview) this.ctx.globalAlpha = 1
+    return tiles_preview
   }
 
   moveLeft() {
-    if (this.actions.isMovingLeft) return
+    if (this.actions.isMovingLeft || this.actions.isFreeze) return
 
     this.actions.isMovingLeft = true
     if (this.isPlaced || this.checkCollision("left")) return this.actions.isMovingLeft = false
@@ -70,7 +72,7 @@ export default class Figure {
   }
 
   moveRight() {
-    if (this.actions.isMovingRight) return
+    if (this.actions.isMovingRight || this.actions.isFreeze) return
 
     this.actions.isMovingRight = true
     if (this.isPlaced || this.checkCollision("right")) return this.actions.isMovingRight = false
@@ -81,7 +83,7 @@ export default class Figure {
   }
 
   moveDown() {
-    if (this.isPlaced || this.actions.isMovingDown) return
+    if (this.isPlaced || this.actions.isMovingDown || this.actions.isFreeze) return
     this.actions.isMovingDown = true
 
     this.stepCount += 1
@@ -105,6 +107,41 @@ export default class Figure {
     this.actions.isMovingDown = false
   }
 
+  immediateFall(figureMoveDown) {
+    if (this.actions.isFreeze) return
+    this.actions.isFreeze = true
+    const tiles_preview = this.drawPreview(true)
+    if (!tiles_preview) return this.actions.isFreeze = false
+
+    let fuse = 0
+    function animation() {
+      const isStop = this.tiles[0].worldPos.y >= tiles_preview[0].worldPos.y
+      if (isStop) return animation_end.call(this)
+      fuse += 1
+      if (fuse >= 1200) return
+      this.tiles.forEach((tile) => {
+        tile.offsetWorldPos.y += 30
+        tile.updateWorldPos(this.position)
+        tile.render()
+      })
+      setTimeout(() => {
+        animation.call(this)
+      }, 10);
+    }
+
+    function animation_end() {
+      this.tiles = tiles_preview
+      this.actions.isFreeze = false
+      this.lifeTime = 0
+      this.stepCount = 1
+      this.tiles.forEach(tile => {
+        if (tile.worldPos.y <= 0 - this.ceilWidth) this.stepCount = 0
+      })
+      return figureMoveDown()
+    }
+    return animation.call(this)
+  }
+
   checkCollision(direction, newTiles) {
     if (direction && !["left", "right", "down"].includes(direction))
       throw new Error("Указано неверное направление!")
@@ -120,7 +157,6 @@ export default class Figure {
         )
           return true
         if (
-          tile.worldPos.y < 0 ||
           tile.worldPos.y + this.ceilWidth > this.Context.canvas.offsetHeight
         )
           return true
@@ -143,12 +179,12 @@ export default class Figure {
     const tiles = this.tiles
     for (let i = 0; i < tiles.length; i++) {
       const tile = tiles[i]
-      const tileX = tile.position.x + this.position.x
-      const tileY = tile.position.y + this.position.y
+      const tileX = tile.worldPos.x
+      const tileY = tile.worldPos.y
 
-      if (direction === "left" && tileX - 1 < 0) return true
-      else if (direction === "right" && tileX + 1 >= 10) return true
-      else if (direction === "down" && tileY + 1 > 16) return true
+      if (direction === "left" && tileX - this.ceilWidth < 0) return true
+      else if (direction === "right" && tileX + this.ceilWidth >= this.Context.canvas.offsetWidth) return true
+      else if (direction === "down" && tileY + this.ceilWidth >= this.Context.canvas.offsetHeight) return true
     }
 
     if (this.stepCount === 0 && direction !== "down") return false
@@ -178,9 +214,6 @@ export default class Figure {
             return true
           }
         } else if (direction === "down") {
-          tile.worldPos.x === ceil.worldPos.x &&
-            console.log(tile.worldPos.y + this.ceilWidth, ceil.worldPos.y)
-          
           if (
             tile.worldPos.x === ceil.worldPos.x &&
             tile.worldPos.y + this.ceilWidth === ceil.worldPos.y
@@ -203,15 +236,22 @@ export default class Figure {
   }
 
   rotate() {}
+
+  doRotate() {
+    if (this.actions.isFreeze || this.actions.isRotating) return
+    this.actions.isRotating = true
+    this.rotate()
+    return this.actions.isRotating = false
+  }
 }
 
 export class Cube extends Figure {
-  constructor(ctx, ceilWidth, figures, grid) {
-    super(ctx, ceilWidth, figures, grid)
+  constructor(Context, color) {
+    super(Context, color)
 
     for (let x = 0; x < 2; x++) {
       for (let y = 0; y < 2; y++) {
-        this.tiles.push(new Ceil(this.Context, { x, y }))
+        this.tiles.push(new Ceil(this.Context, { x, y }, this.color))
       }
     }
 
@@ -229,13 +269,13 @@ export class Cube extends Figure {
 
 
 export class Triangle extends Figure {
-  constructor(ctx, ceilWidth, figures, grid) {
-    super(ctx, ceilWidth, figures, grid)
+  constructor(Context, color) {
+    super(Context, color)
 
     for (let x = 0; x < 2; x++) {
       for (let y = 0; y < 2; y++) {
         if (x === 1 && y === 0) continue
-        this.tiles.push(new Ceil(this.Context, { x, y }))
+        this.tiles.push(new Ceil(this.Context, { x, y }, this.color))
       }
     }
 
@@ -251,32 +291,28 @@ export class Triangle extends Figure {
     const rotateTiles = []
 
     if (this.Angle === 0) {
-      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 0 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }))
+      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 0 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }, this.color))
     } else if (this.Angle === 1) {
-      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 0 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 0 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 1 }))
+      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 0 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 0 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 1 }, this.color))
     } else if (this.Angle === 2) {
-      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 0 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 0 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }))
+      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 0 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 0 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }, this.color))
     } else if (this.Angle === 3) {
-      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 0 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }))
+      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 0 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }, this.color))
     }
 
     rotateTiles.forEach(tile => tile.updateWorldPos(this.position))
-    console.log(rotateTiles[0].worldPos);
-    
     
     const isCollision = this.checkCollision(undefined, rotateTiles)
-    console.log(isCollision);
 
     if (isCollision) return this.Angle -= 1
-    console.log(this.tiles[0].worldPos.x);
     
     return this.tiles = rotateTiles
   }
@@ -285,11 +321,11 @@ export class Triangle extends Figure {
 
 
 export class Plank extends Figure {
-  constructor(ctx, ceilWidth, figures, grid) {
-    super(ctx, ceilWidth, figures, grid)
+  constructor(Context, color) {
+    super(Context, color)
 
     for (let x = 0; x < 4; x++) {
-      this.tiles.push(new Ceil(this.Context, { x, y: 0 }))
+      this.tiles.push(new Ceil(this.Context, { x, y: 0 }, this.color))
     }
 
     this.position = {
@@ -301,42 +337,54 @@ export class Plank extends Figure {
   rotate() {
     this.Angle += 1
     if (this.Angle > 1) this.Angle = 0
-    const rotateTiles = []
+    let rotateTiles = []
 
     if (this.Angle === 0) {
       for (let x = 0; x < 4; x++) {
-        rotateTiles.push(new Ceil(this.Context,{ x, y: 0 }))
+        rotateTiles.push(new Ceil(this.Context,{ x, y: 0 }, this.color))
       }
     } else if (this.Angle === 1) {
-      for (let y = 0; y < 4; y++) {
-        rotateTiles.push(new Ceil(this.Context,{ x: 1, y }))
+      for (let y = 0; y < 4; y++) {rotateTiles.push(new Ceil(this.Context, { x: 1, y }, this.color))}
+      rotateTiles.forEach((tile) => tile.updateWorldPos(this.position))
+      let isAvailable = true
+      console.log(this.checkCollision(undefined, rotateTiles))
+      if (this.checkCollision(undefined, rotateTiles)) {
+        isAvailable = false
+        for (let x = 0; x < 4; x++) {
+          if (isAvailable) break
+          if (x === 1) continue
+          rotateTiles = []
+          for (let y = 0; y < 4; y++) {
+            rotateTiles.push(new Ceil(this.Context, { x, y }, this.color))
+            rotateTiles.forEach((tile) => tile.updateWorldPos(this.position))
+            isAvailable = !this.checkCollision(undefined, rotateTiles)
+          }
+        }
       }
+      if (!isAvailable) return (this.Angle -= 1)
     }
     
     rotateTiles.forEach(tile => tile.updateWorldPos(this.position))
-    console.log(rotateTiles[0].worldPos);
-    
 
-    const isCollision = this.checkCollision(undefined, rotateTiles)
-    console.log(isCollision);
-
-    if (isCollision) return this.Angle -= 1
-    console.log(this.tiles[0].worldPos.x);
+    if (this.Angle !== 1) {
+      const isCollision = this.checkCollision(undefined, rotateTiles)
+      if (isCollision) return (this.Angle -= 1)
+    }
     
     return this.tiles = rotateTiles
   }
 }
 
 export class Stairs extends Figure {
-  constructor(ctx, ceilWidth, figures, grid) {
-    super(ctx, ceilWidth, figures, grid)
+  constructor(Context, color) {
+    super(Context, color)
 
     for (let x = 0; x < 3; x++) {
       this.tiles = [
-        new Ceil(this.Context, {x: 0, y: 1}),
-        new Ceil(this.Context, {x: 1, y: 1}),
-        new Ceil(this.Context, {x: 2, y: 1}),
-        new Ceil(this.Context, {x: 1, y: 0}),
+        new Ceil(this.Context, {x: 0, y: 1}, this.color),
+        new Ceil(this.Context, {x: 1, y: 1}, this.color),
+        new Ceil(this.Context, {x: 2, y: 1}, this.color),
+        new Ceil(this.Context, {x: 1, y: 0}, this.color),
       ]
     }
 
@@ -352,37 +400,33 @@ export class Stairs extends Figure {
     const rotateTiles = []
     
     if (this.Angle === 0) {
-      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 0 }))
+      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 0 }, this.color))
     }
     else if (this.Angle === 1) {
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 2 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 0 }))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 2 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 0 }, this.color))
     } else if (this.Angle === 2) {
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 2 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 1 }))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 2 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 1 }, this.color))
     } else if (this.Angle === 3) {
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 0 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 2 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 1 }))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 0 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 2 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 1 }, this.color))
     }
 
     rotateTiles.forEach(tile => tile.updateWorldPos(this.position))
-    console.log(rotateTiles[0].worldPos);
-    
 
     const isCollision = this.checkCollision(undefined, rotateTiles)
-    console.log(isCollision);
 
     if (isCollision) return this.Angle -= 1
-    console.log(this.tiles[0].worldPos.x);
     
     return this.tiles = rotateTiles
   }
@@ -391,13 +435,13 @@ export class Stairs extends Figure {
 
 
 export class LCorner extends Figure {
-  constructor(ctx, ceilWidth, figures, grid) {
-    super(ctx, ceilWidth, figures, grid)
+  constructor(Context, color) {
+    super(Context, color)
 
     for (let x = 0; x < 3; x++) {
-      this.tiles.push(new Ceil(this.Context, { x, y: 1 }))
+      this.tiles.push(new Ceil(this.Context, { x, y: 1 }, this.color))
     }
-    this.tiles.push(new Ceil(this.Context, { x: 0, y: 0 }))
+    this.tiles.push(new Ceil(this.Context, { x: 0, y: 0 }, this.color))
 
     this.position = {
       x: 4,
@@ -411,36 +455,32 @@ export class LCorner extends Figure {
     const rotateTiles = []
 
     if (this.Angle === 0) {
-      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 0 }))
+      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 0 }, this.color))
     } else if (this.Angle === 1) {
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 0 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 2 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 0 }))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 0 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 2 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 0 }, this.color))
     } else if (this.Angle === 2) {
-      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 2 }))
+      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 2 }, this.color))
     } else if (this.Angle === 3) {
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 0 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 2 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 2 }))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 0 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 2 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 2 }, this.color))
     }
 
     rotateTiles.forEach(tile => tile.updateWorldPos(this.position))
-    console.log(rotateTiles[0].worldPos);
-    
 
     const isCollision = this.checkCollision(undefined, rotateTiles)
-    console.log(isCollision);
 
     if (isCollision) return this.Angle -= 1
-    console.log(this.tiles[0].worldPos.x);
     
     return this.tiles = rotateTiles
   }
@@ -448,13 +488,13 @@ export class LCorner extends Figure {
 
 
 export class RCorner extends Figure {
-  constructor(ctx, ceilWidth, figures, grid) {
-    super(ctx, ceilWidth, figures, grid)
+  constructor(Context, color) {
+    super(Context, color)
 
     for (let x = 0; x < 3; x++) {
-      this.tiles.push(new Ceil(this.Context, { x, y: 1 }))
+      this.tiles.push(new Ceil(this.Context, { x, y: 1 }, this.color))
     }
-    this.tiles.push(new Ceil(this.Context, { x: 2, y: 0 }))
+    this.tiles.push(new Ceil(this.Context, { x: 2, y: 0 }, this.color))
 
     this.position = {
       x: 4,
@@ -468,36 +508,32 @@ export class RCorner extends Figure {
     const rotateTiles = []
 
     if (this.Angle === 0) {
-      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 0 }))
+      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 0 }, this.color))
     } else if (this.Angle === 1) {
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 0 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 2 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 2 }))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 0 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 2 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 2 }, this.color))
     } else if (this.Angle === 2) {
-      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 2 }))
+      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 2 }, this.color))
     } else if (this.Angle === 3) {
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 0 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 2 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 0 }))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 0 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 2 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 0 }, this.color))
     }
 
     rotateTiles.forEach(tile => tile.updateWorldPos(this.position))
-    console.log(rotateTiles[0].worldPos);
-    
 
     const isCollision = this.checkCollision(undefined, rotateTiles)
-    console.log(isCollision);
 
     if (isCollision) return this.Angle -= 1
-    console.log(this.tiles[0].worldPos.x);
     
     return this.tiles = rotateTiles
   }
@@ -505,14 +541,14 @@ export class RCorner extends Figure {
 
 
 export class LSnake extends Figure {
-  constructor(ctx, ceilWidth, figures, grid) {
-    super(ctx, ceilWidth, figures, grid)
+  constructor(Context, color) {
+    super(Context, color)
 
     this.tiles = [
-      new Ceil(this.Context, {x: 0, y: 0}),
-      new Ceil(this.Context, {x: 1, y: 0}),
-      new Ceil(this.Context, {x: 1, y: 1}),
-      new Ceil(this.Context, {x: 2, y: 1}),
+      new Ceil(this.Context, {x: 0, y: 0}, this.color),
+      new Ceil(this.Context, {x: 1, y: 0}, this.color),
+      new Ceil(this.Context, {x: 1, y: 1}, this.color),
+      new Ceil(this.Context, {x: 2, y: 1}, this.color),
     ]
 
     this.position = {
@@ -527,23 +563,19 @@ export class LSnake extends Figure {
     const rotateTiles = []
 
     if (this.Angle === 0) {
-      rotateTiles.push(new Ceil(this.Context, {x: 0, y: 0}))
-      rotateTiles.push(new Ceil(this.Context, {x: 1, y: 0}))
-      rotateTiles.push(new Ceil(this.Context, {x: 1, y: 1}))
-      rotateTiles.push(new Ceil(this.Context, {x: 2, y: 1}))
+      rotateTiles.push(new Ceil(this.Context, {x: 0, y: 0}, this.color))
+      rotateTiles.push(new Ceil(this.Context, {x: 1, y: 0}, this.color))
+      rotateTiles.push(new Ceil(this.Context, {x: 1, y: 1}, this.color))
+      rotateTiles.push(new Ceil(this.Context, {x: 2, y: 1}, this.color))
     } else if (this.Angle === 1) {
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 0 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 2 }))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 0 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 2 }, this.color))
     }
 
     rotateTiles.forEach(tile => tile.updateWorldPos(this.position))
-    console.log(rotateTiles[0].position);
-
     const isCollision = this.checkCollision(undefined, rotateTiles)
-    console.log("Коллизия: ", isCollision)
-
     if (isCollision) return this.Angle -= 1
     
     return this.tiles = rotateTiles
@@ -553,14 +585,14 @@ export class LSnake extends Figure {
 
 
 export class RSnake extends Figure {
-  constructor(ctx, ceilWidth, figures, grid) {
-    super(ctx, ceilWidth, figures, grid)
+  constructor(Context, color) {
+    super(Context, color)
 
     this.tiles = [
-      new Ceil(this.Context, { x: 0, y: 1 }),
-      new Ceil(this.Context, { x: 1, y: 1 }),
-      new Ceil(this.Context, { x: 1, y: 0 }),
-      new Ceil(this.Context, { x: 2, y: 0 }),
+      new Ceil(this.Context, { x: 0, y: 1 }, this.color),
+      new Ceil(this.Context, { x: 1, y: 1 }, this.color),
+      new Ceil(this.Context, { x: 1, y: 0 }, this.color),
+      new Ceil(this.Context, { x: 2, y: 0 }, this.color),
     ]
 
     this.position = {
@@ -575,26 +607,22 @@ export class RSnake extends Figure {
     const rotateTiles = []
 
     if (this.Angle === 0) {
-      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 0 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 0 }))
+      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 0 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 2, y: 0 }, this.color))
     } else if (this.Angle === 1) {
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 0 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 1 }))
-      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 2 }))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 0 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 1, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 1 }, this.color))
+      rotateTiles.push(new Ceil(this.Context, { x: 0, y: 2 }, this.color))
     }
 
     rotateTiles.forEach(tile => tile.updateWorldPos(this.position))
-    console.log(rotateTiles[0].position);
-    
 
     const isCollision = this.checkCollision(undefined, rotateTiles)
-    console.log(isCollision);
 
     if (isCollision) return this.Angle -= 1
-    console.log(this.tiles[0].worldPos.x);
     
     return this.tiles = rotateTiles
   }
