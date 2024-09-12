@@ -10,23 +10,37 @@
   <div class="wrapper">
     <div id="game-field">
       <canvas id="canvas" width="440" height="680"></canvas>
-      <div class="preview">
-        <span class="preview__figure"></span>
-        <span class="preview__subtitle">Next</span>
+      <div class="infoBlock">
+        <span>Игра ускоряется!</span>
       </div>
       <div class="score">
-        <div>
-          <h1>Tetris</h1>
-          <span id="score">Score: 0</span>
-          <br>
-          <span id="lines-destroyed">Lines destroyed: 0</span>
-          <br>
-          <span id="record">Best result: </span>
-          <br>
-          <span id="time">
-            Time: 0
-          </span>
+        <div><h1>Tetris</h1></div>
+        <div class="preview">
+          <span class="preview__figure"></span>
+          <span class="preview__subtitle">Next</span>
         </div>
+        <br>
+        <span id="score">Score: 0</span>
+        <br>
+        <span id="lines-destroyed">Lines destroyed: 0</span>
+        <br>
+        <span id="record">Best result: </span>
+        <br>
+        <span id="time">
+          Time: 0
+        </span>
+      </div>
+    </div>
+    <div class="game-controls">
+      <div class="navigations">
+        <button id="up">Вверх</button>
+        <button id="right">Вправо</button>
+        <button id="down">Вниз</button>
+        <button id="left">Влево</button>
+      </div>
+      <div class="actions">
+        <button id="rotate">Вращать</button>
+        <button id="place">Поставить</button>
       </div>
     </div>
   </div>

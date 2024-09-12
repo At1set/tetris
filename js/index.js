@@ -4,10 +4,10 @@ window.onload = () => {
   const canvas = document.getElementById("canvas")
 
   const ctx = canvas.getContext("2d")
-  const ceilWidth = 40
+  let ceilWidth = 40
 
   const preview = document.querySelector(".preview")
-  preview.style.opacity = 0
+  // preview.style.opacity = 0
 
   const score = document.getElementById("score")
   let score_count = 0
@@ -18,6 +18,22 @@ window.onload = () => {
   record.innerText = `Best result: ${record_count}`
   const time = document.getElementById("time")
   let time_count = 0
+  let gameSpeed = 500
+  const infoBlock = document.querySelector(".infoBlock")
+  const rainbowText = (element, delay) => {
+    element.classList.add("_active")
+    const colors = ['red', 'orange', 'yellow', 'green', 'blue', 'indigo', 'violet'];
+    let colorIndex = 0;
+
+    const interval = setInterval(() => {
+      element.style.color = colors[colorIndex]
+      colorIndex = (colorIndex + 1) % colors.length
+    }, 100)
+    setTimeout(() => {
+      clearInterval(interval)
+      element.classList.remove("_active")
+    }, delay);
+  }
 
   ctx.imageSmoothingEnabled = false
   ctx.lineWidth = 1
@@ -41,6 +57,10 @@ window.onload = () => {
     canvas,
     grid,
   }
+  const gameField = {
+    width: 11,
+    height: 17
+  }
 
   let currentFigure = null
   // currentFigure = new Plank(Context, "blue")
@@ -50,16 +70,22 @@ window.onload = () => {
   let rand_sequence = sequence.slice().sort(() => Math.random() - 0.5)
   let rand_figure = rand_sequence[0]
 
+  let random_color = getRandomColor()
+
   const tetris_theme = new Audio("../src/audio/Tetris theme.mp3")
+  tetris_theme.volume = 0.5
   tetris_theme.onended = tetris_theme.play
 
   let isGameStarted = false
+  let isGameEnded = false
   drawGrid()
   drawStart()
 
   function main() {
+    if (isGameEnded) return
     if (!isGameStarted) {
       isGameStarted = true
+      gameCycle()
       getNewFigure()
       preview.style.opacity = 1
       tetris_theme.play()
@@ -88,7 +114,7 @@ window.onload = () => {
       if (Object.prototype.hasOwnProperty.call(rows, row)) {
         const rowCeilCount = rows[row]
         
-        if (rowCeilCount >= 11) {
+        if (rowCeilCount >= gameField.width) {
           destroyed += 1
           grid = grid.filter(ceil => ceil.worldPos.y != +row)
           Context.grid = grid
@@ -168,10 +194,7 @@ window.onload = () => {
   }
 
   function getNewFigure() {
-    console.log(rand_sequence);
     sequence_index += 1
-    
-    const random_color = getRandomColor()
 
     if (rand_figure === 1) {
       currentFigure = new Cube(Context, random_color)
@@ -213,6 +236,8 @@ window.onload = () => {
       rand_sequence = [rand_sequence[rand_sequence.length-1]].concat(newSequence)
     }
     rand_figure = rand_sequence[sequence_index]
+    random_color = getRandomColor()
+    preview.querySelector(".preview__figure").style.backgroundColor = random_color
 
     if (rand_figure === 1) preview.classList.add("Cube")
     if (rand_figure === 2) preview.classList.add("Triangle")
@@ -224,13 +249,23 @@ window.onload = () => {
     if (rand_figure === 8) preview.classList.add("RSnake")
   }
 
-  const gameCycle = setInterval(() => {
-    if (!isGameStarted) return
+  const gameCycle = () => {
+    if (!isGameStarted || isGameEnded) return
     figureMoveDown()
-  }, 500)
+    setTimeout(() => {
+      gameCycle()
+    }, gameSpeed);
+  }
   const timer = setInterval(() => {
     if (!isGameStarted) return
     time.innerText = "Time: " + (time_count++).toString()
+    if (time_count % 30 === 0 && time_count / 60 < 2) {
+      rainbowText(infoBlock, 3000)
+      gameSpeed -= 25
+    } else if (time_count % 60 === 0) {
+      rainbowText(infoBlock, 3000)
+      gameSpeed -= 25
+    }
   }, 1000);
 
   window.addEventListener("keydown", (e) => {
@@ -246,14 +281,52 @@ window.onload = () => {
   window.addEventListener("keyup", (e) => {
     if (e.code === "KeyW" || e.code === "ArrowUp") currentFigure?.doRotate()
   })
+  document.getElementById("left").addEventListener("click", () => currentFigure?.moveLeft())
+  document.getElementById("right").addEventListener("click", () => currentFigure?.moveRight())
+  document.getElementById("down").addEventListener("click", () => currentFigure?.moveDown())
+  document.getElementById("place").addEventListener("click", () => {
+    if (!isGameStarted) return main()
+    currentFigure?.immediateFall(figureMoveDown.bind(this))
+  })
+  document.getElementById("rotate").addEventListener("click", () => currentFigure?.doRotate())
 
   function endGame() {
-    clearInterval(gameCycle)
+    isGameEnded = true
     clearInterval(timer)
     saveRecord()
+    tetris_theme.pause()
     setTimeout(() => {
       location.reload()
     }, 0.2)
     alert("Конец игры")
   }
+
+  window.addEventListener("resize", resizeScreen)
+  
+  function resizeScreen() {
+    if (window.innerWidth <= 750) {
+      canvas.width = Math.round(window.innerWidth * 0.6)
+      ceilWidth = canvas.width / gameField.width
+      let fuse = 0
+      while (ceilWidth % gameField.width !== 0) {
+        fuse += 1
+        if (fuse >= 120) return
+        canvas.width += 1
+        ceilWidth = canvas.width / gameField.width
+      }
+      console.log(ceilWidth)
+
+      Context.ceilWidth = ceilWidth
+      canvas.height = ceilWidth * gameField.height
+      preview.style.opacity = 1
+      drawGrid()
+      drawStart()
+    } else if (window.innerWidth <= 480) {
+    } else {
+      canvas.width = 440
+      drawGrid()
+      drawStart()
+    }
+  }
+  resizeScreen()
 }
